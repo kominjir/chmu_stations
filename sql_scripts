@@ -1,0 +1,87 @@
+CREATE TABLE `statistika_rocni` (
+  `sid` int(11) NOT NULL,
+  `rok` int(4) NOT NULL,
+  `pocet_dni_mereni` int(11) DEFAULT NULL,
+  `t_avg` float DEFAULT NULL,
+  `t_max` float DEFAULT NULL,
+  `t_min` float DEFAULT NULL,
+  `srazky_suma` float DEFAULT NULL,
+  `snih_novy_suma` float DEFAULT NULL,
+  `vlhkost_avg` float DEFAULT NULL,
+  `vitr_avg` float DEFAULT NULL,
+  `tlak_avg` float DEFAULT NULL,
+  `slunecni_svit_suma` float DEFAULT NULL,
+  `bourek_dni` int(11) DEFAULT NULL,
+  PRIMARY KEY (`sid`,`rok`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Naplnění daty (Tohle u 30M řádků chvíli potrvá, klidně pár minut)
+INSERT INTO `statistika_rocni`
+SELECT 
+    sid, 
+    YEAR(den) as rok,
+    COUNT(den) as pocet_dni_mereni,
+    ROUND(AVG(t_avg), 2) as t_avg,
+    MAX(t_max) as t_max,
+    MIN(t_min) as t_min,
+    ROUND(SUM(srazky), 1) as srazky_suma,
+    ROUND(SUM(snih_novy), 1) as snih_novy_suma,
+    ROUND(AVG(vlhkost), 1) as vlhkost_avg,
+    ROUND(AVG(vitr_rychlost), 1) as vitr_avg,
+    ROUND(AVG(tlak), 1) as tlak_avg,
+    ROUND(SUM(slunecni_svit), 1) as slunecni_svit_suma,
+    SUM(bourka) as bourek_dni
+FROM `pocasi`
+GROUP BY sid, YEAR(den);
+
+---------------------------------------------
+CREATE TABLE `statistika_grafy_mesice` (
+  `sid` int(11) NOT NULL,
+  `rok` int(4) NOT NULL,
+  `mesic` int(2) NOT NULL,
+  `t_avg` float DEFAULT NULL,
+  `srazky_suma` float DEFAULT NULL,
+  `vitr_avg` float DEFAULT NULL,
+  `slunecni_svit_suma` float DEFAULT NULL,
+  PRIMARY KEY (`sid`,`rok`,`mesic`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO `statistika_grafy_mesice`
+SELECT 
+    sid, 
+    YEAR(den) as rok, 
+    MONTH(den) as mesic,
+    ROUND(AVG(t_avg), 2) as t_avg,
+    ROUND(SUM(srazky), 1) as srazky_suma,
+    ROUND(AVG(vitr_rychlost), 2) as vitr_avg,
+    ROUND(SUM(slunecni_svit), 1) as slunecni_svit_suma
+FROM `pocasi`
+GROUP BY sid, YEAR(den), MONTH(den);
+
+---------------------------------------------------------
+CREATE TABLE `statistika_mesicni` (
+  `sid` int(11) NOT NULL,
+  `mesic` int(2) NOT NULL,
+  `t_avg_dlouhodoby` float DEFAULT NULL,
+  `srazky_avg_mesicni` float DEFAULT NULL,
+  `vitr_avg_dlouhodoby` float DEFAULT NULL,
+  `snih_novy_avg_mesicni` float DEFAULT NULL,
+  PRIMARY KEY (`sid`,`mesic`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Počítáme to z té naší nové tabulky pro grafy, je to mnohem rychlejší!
+INSERT INTO `statistika_mesicni`
+SELECT 
+    sid, 
+    mesic,
+    ROUND(AVG(t_avg), 2) as t_avg_dlouhodoby,
+    ROUND(AVG(srazky_suma), 1) as srazky_avg_mesicni,
+    ROUND(AVG(vitr_avg), 2) as vitr_avg_dlouhodoby,
+    ROUND(AVG(snih_novy_suma), 1) as snih_novy_avg_mesicni
+FROM (
+    -- Poddotaz: spočítá sumy sněhu pro každý měsíc a rok zvlášť
+    SELECT sid, YEAR(den) as rok, MONTH(den) as mesic, SUM(snih_novy) as snih_novy_suma 
+    FROM pocasi GROUP BY sid, YEAR(den), MONTH(den)
+) as snehovy_poddotaz
+JOIN statistika_grafy_mesice USING (sid, rok, mesic)
+GROUP BY sid, mesic;
